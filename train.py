@@ -11,7 +11,7 @@ import os
 
 
 if __name__ == '__main__':
-    n_steps = 200000//8
+    n_steps = 200000
     device = "cuda" if torch.cuda.is_available() else "cpu"
     batch_size = 48
     os.makedirs('images', exist_ok=True)
@@ -24,6 +24,7 @@ if __name__ == '__main__':
         download=True,
         transform=T.Compose([T.ToTensor(), T.RandomHorizontalFlip()]),
     )
+    dataset_len = len(dataset)
     # dataset = torchvision.datasets.MNIST(
     #     root="mnist",
     #     train=True,
@@ -85,7 +86,8 @@ if __name__ == '__main__':
     if accelerator.is_main_process:
         pbar = tqdm(pbar, dynamic_ncols=True)
     for step in pbar:
-        pbar.set_description("Training") if accelerator.is_main_process else None
+        epoch = step // (dataset_len // batch_size)
+        pbar.set_description(f"Training [{epoch}] epoch") if accelerator.is_main_process else None
         model.train()
         for step in pbar:
             data = next(train_dataloader)
