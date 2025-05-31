@@ -132,11 +132,15 @@ class MeanFlow:
 
         t_ = rearrange(t, "b -> b 1 1 1")
         r_ = rearrange(r, "b -> b 1 1 1")
-
+        # finite difference
+        delta_t = 1e-4 
+        
         e = torch.randn_like(x)
         x = self.normer.norm(x)
 
         z = (1 - t_) * x + t_ * e
+        z_t_delta_t = (1 - (t_+ delta_t)) * x + (t_ + delta_t) * e
+        
         v = e - x
 
         if c is not None:
@@ -159,18 +163,10 @@ class MeanFlow:
 
         # forward pass
         # u = model(z, t, r, y=c)
-        model_partial = partial(model, y=c)
-        jvp_args = (
-            lambda z, t, r: model_partial(z, t, r),
-            (z, t, r),
-            (v_hat, torch.ones_like(t), torch.zeros_like(r)),
-        )
+        u = model(z, t, r, y=c)
+        u_t_delta_t = model(z_t_delta_t, t + delta_t, r, y=c)
 
-        if self.create_graph:
-            u, dudt = self.jvp_fn(*jvp_args, create_graph=True)
-        else:
-            u, dudt = self.jvp_fn(*jvp_args)
-
+        dudt = (u_t_delta_t - u) / delta_t
         u_tgt = v_hat - (t_ - r_) * dudt
 
         error = u - stopgrad(u_tgt)

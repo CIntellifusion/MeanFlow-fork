@@ -89,7 +89,7 @@ if __name__ == '__main__':
             global_step += 1
             losses += loss.item()
             mse_losses += mse_val.item()
-
+            pbar.set_description(f"Training (loss: {loss:.4f})")
             if accelerator.is_main_process:
                 if global_step % log_step == 0:
                     current_time = time.asctime(time.localtime(time.time()))

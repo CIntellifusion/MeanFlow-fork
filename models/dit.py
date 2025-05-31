@@ -8,7 +8,6 @@ import torch.nn.functional as F
 from einops import repeat, pack, unpack
 from torch.cuda.amp import autocast
 
-
 def modulate(x, scale, shift):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
