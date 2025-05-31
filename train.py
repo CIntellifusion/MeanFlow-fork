@@ -11,7 +11,7 @@ import os
 
 
 if __name__ == '__main__':
-    n_steps = 200000
+    n_steps = 200000//8
     device = "cuda" if torch.cuda.is_available() else "cpu"
     batch_size = 48
     os.makedirs('images', exist_ok=True)
@@ -50,6 +50,15 @@ if __name__ == '__main__':
         num_heads=6,
         num_classes=10,
     ).to(accelerator.device)
+    # model = MFDiT(
+    #     input_size=32,
+    #     patch_size=2,
+    #     in_channels=1,
+    #     dim=384,
+    #     depth=12,
+    #     num_heads=6,
+    #     num_classes=10,
+    # ).to(accelerator.device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.0)
 
@@ -72,8 +81,11 @@ if __name__ == '__main__':
     log_step = 500
     sample_step = 500
 
-    with tqdm(range(n_steps), dynamic_ncols=True) as pbar:
-        pbar.set_description("Training")
+    pbar = range(n_steps)
+    if accelerator.is_main_process:
+        pbar = tqdm(pbar, dynamic_ncols=True)
+    for step in pbar:
+        pbar.set_description("Training") if accelerator.is_main_process else None
         model.train()
         for step in pbar:
             data = next(train_dataloader)
@@ -89,8 +101,8 @@ if __name__ == '__main__':
             global_step += 1
             losses += loss.item()
             mse_losses += mse_val.item()
-            pbar.set_description(f"Training (loss: {loss:.4f})")
             if accelerator.is_main_process:
+                pbar.set_description(f"Training (loss: {loss:.4f})")
                 if global_step % log_step == 0:
                     current_time = time.asctime(time.localtime(time.time()))
                     batch_info = f'Global Step: {global_step}'
