@@ -4,14 +4,21 @@ import torchvision
 from torchvision import transforms as T
 from torchvision.utils import make_grid, save_image
 from tqdm import tqdm
-from meanflow import MeanFlow
+training_type="jvp"
+training_type="fd" 
+if training_type == "jvp": 
+    print("Using JVP Training meanflow.py for training")
+    from meanflow_jvp import MeanFlow
+else:
+    print("Using Finite Difference Training meanflow.py for training")
+    from meanflow import MeanFlow
 from accelerate import Accelerator
 import time
 import os
 
 
 if __name__ == '__main__':
-    n_steps = 200000
+    n_steps = 50000
     device = "cuda" if torch.cuda.is_available() else "cpu"
     batch_size = 48
     os.makedirs('images', exist_ok=True)
@@ -38,7 +45,7 @@ if __name__ == '__main__':
                 yield i
 
     train_dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=8
+        dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=8,pin_memory=True
     )
     train_dataloader = cycle(train_dataloader)
 
@@ -87,51 +94,49 @@ if __name__ == '__main__':
         pbar = tqdm(pbar, dynamic_ncols=True)
     for step in pbar:
         epoch = step // (dataset_len // batch_size)
-        pbar.set_description(f"Training [{epoch}] epoch") if accelerator.is_main_process else None
         model.train()
-        for step in pbar:
-            data = next(train_dataloader)
-            x = data[0].to(accelerator.device)
-            c = data[1].to(accelerator.device)
+        data = next(train_dataloader)
+        x = data[0].to(accelerator.device)
+        c = data[1].to(accelerator.device)
 
-            loss, mse_val = meanflow.loss(model, x, c)
+        loss, mse_val = meanflow.loss(model, x, c)
 
-            accelerator.backward(loss)
-            optimizer.step()
-            optimizer.zero_grad()
+        accelerator.backward(loss)
+        optimizer.step()
+        optimizer.zero_grad()
 
-            global_step += 1
-            losses += loss.item()
-            mse_losses += mse_val.item()
+        global_step += 1
+        losses += loss.item()
+        mse_losses += mse_val.item()
+        pbar.set_description(f"Training (epoch: {epoch}) (loss: {loss:.4f})")
+        if accelerator.is_main_process:
+            if global_step % log_step == 0:
+                current_time = time.asctime(time.localtime(time.time()))
+                batch_info = f'Global Step: {global_step}'
+                loss_info = f'Loss: {losses / log_step:.6f}    MSE_Loss: {mse_losses / log_step:.6f}'
+
+                # Extract the learning rate from the optimizer
+                lr = optimizer.param_groups[0]['lr']
+                lr_info = f'Learning Rate: {lr:.6f}'
+
+                log_message = f'{current_time}\n{batch_info}    {loss_info}    {lr_info}\n'
+
+                with open('log.txt', mode='a') as n:
+                    n.write(log_message)
+
+                losses = 0.0
+                mse_losses = 0.0
+
+        if global_step % sample_step == 0:
             if accelerator.is_main_process:
-                pbar.set_description(f"Training (loss: {loss:.4f})")
-                if global_step % log_step == 0:
-                    current_time = time.asctime(time.localtime(time.time()))
-                    batch_info = f'Global Step: {global_step}'
-                    loss_info = f'Loss: {losses / log_step:.6f}    MSE_Loss: {mse_losses / log_step:.6f}'
-
-                    # Extract the learning rate from the optimizer
-                    lr = optimizer.param_groups[0]['lr']
-                    lr_info = f'Learning Rate: {lr:.6f}'
-
-                    log_message = f'{current_time}\n{batch_info}    {loss_info}    {lr_info}\n'
-
-                    with open('log.txt', mode='a') as n:
-                        n.write(log_message)
-
-                    losses = 0.0
-                    mse_losses = 0.0
-
-            if global_step % sample_step == 0:
-                if accelerator.is_main_process:
-                    model_module = model.module if hasattr(model, 'module') else model
-                    z = meanflow.sample_each_class(model_module, 1)
-                    log_img = make_grid(z, nrow=10)
-                    img_save_path = f"images/step_{global_step}.png"
-                    save_image(log_img, img_save_path)
-                accelerator.wait_for_everyone()
-                model.train()
-                
-    if accelerator.is_main_process:
-        ckpt_path = f"checkpoints/step_{global_step}.pt"
-        accelerator.save(model_module.state_dict(), ckpt_path)
+                model_module = model.module if hasattr(model, 'module') else model
+                z = meanflow.sample_each_class(model_module, 1)
+                log_img = make_grid(z, nrow=10)
+                img_save_path = f"images/step_{global_step}.png"
+                save_image(log_img, img_save_path)
+            accelerator.wait_for_everyone()
+            model.train()
+            
+        if accelerator.is_main_process and global_step % 1000 == 0:
+            ckpt_path = f"checkpoints/{training_type}_step_{global_step}.pt"
+            accelerator.save(model_module.state_dict(), ckpt_path)
