@@ -200,3 +200,41 @@ class MeanFlow:
         z = self.normer.unnorm(z)
 
         return z
+    @torch.no_grad()
+    def sample_each_class_with_cfg(self, model, n_per_class, classes=None,
+                                sample_steps=1, device='cuda',
+                                guidance_scale=2.0):
+        model.eval()
+
+        # 构造条件类别标签
+        if classes is None:
+            c = torch.arange(self.num_classes, device=device).repeat(n_per_class)
+        else:
+            c = torch.tensor(classes, device=device).repeat(n_per_class)
+        z = torch.randn(c.shape[0], self.channels,
+                        self.image_size, self.image_size, device=device)
+
+        t = torch.ones((c.shape[0],), device=c.device)
+        r = torch.zeros((c.shape[0],), device=c.device)
+
+        # classifier-free guidance
+        # 构造 unconditioned 输入（用 -1 表示无类别）
+        null_c = torch.ones_like(c) * self.num_classes
+        
+        # 拼接 condition 和 uncondition 输入
+        z_cat = torch.cat([z, z], dim=0)
+        t_cat = torch.cat([t, t], dim=0)
+        r_cat = torch.cat([r, r], dim=0)
+        c_cat = torch.cat([null_c, c], dim=0)
+
+        # 模型前向传播
+        eps_cat = model(z_cat, t_cat, r_cat, c_cat)
+        eps_uncond, eps_cond = eps_cat.chunk(2, dim=0)
+
+        # 应用 guidance
+        eps_guided = eps_uncond + guidance_scale * (eps_cond - eps_uncond)
+
+        z = z - eps_guided
+        z = self.normer.unnorm(z)
+
+        return z

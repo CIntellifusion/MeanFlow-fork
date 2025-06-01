@@ -58,7 +58,11 @@ def load_model_and_infer(
 
 
 if __name__ == '__main__':
+    # load_model_and_infer(
+    #     ckpt_path="checkpoints/fd_step_200000.0.pt",
+    #     output_path="./inference/fd_step_200000_inference_output.png",
+    # )
     load_model_and_infer(
-        ckpt_path="checkpoints/fd_step_200000.0.pt",
-        output_path="./inference/fd_step_200000_inference_output.png",
+        ckpt_path="checkpoints/jvp_step_200000.0.pt",
+        output_path="./inference/jvp_step_200000_inference_output.png",
     )
