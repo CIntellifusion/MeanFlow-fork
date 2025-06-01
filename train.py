@@ -4,8 +4,10 @@ import torchvision
 from torchvision import transforms as T
 from torchvision.utils import make_grid, save_image
 from tqdm import tqdm
-training_type="jvp"
-training_type="fd" 
+import sys 
+training_type = sys.argv[1] if len(sys.argv) > 1 else "fd"  # Default to 'fd' if no argument is provided
+# training_type="jvp"
+# training_type="fd" 
 if training_type == "jvp": 
     print("Using JVP Training meanflow.py for training")
     from meanflow_jvp import MeanFlow
@@ -18,10 +20,10 @@ import os
 
 
 if __name__ == '__main__':
-    n_steps = 50000
+    n_steps = 200000
     device = "cuda" if torch.cuda.is_available() else "cpu"
     batch_size = 48
-    os.makedirs('images', exist_ok=True)
+    os.makedirs(f'{training_type}_images', exist_ok=True)
     os.makedirs('checkpoints', exist_ok=True)
     accelerator = Accelerator(mixed_precision='fp16')
 
@@ -108,7 +110,7 @@ if __name__ == '__main__':
         global_step += 1
         losses += loss.item()
         mse_losses += mse_val.item()
-        pbar.set_description(f"Training (epoch: {epoch}) (loss: {loss:.4f})")
+        pbar.set_description(f"{training_type} Training (epoch: {epoch}) (loss: {loss:.4f})")
         if accelerator.is_main_process:
             if global_step % log_step == 0:
                 current_time = time.asctime(time.localtime(time.time()))
@@ -121,7 +123,7 @@ if __name__ == '__main__':
 
                 log_message = f'{current_time}\n{batch_info}    {loss_info}    {lr_info}\n'
 
-                with open('log.txt', mode='a') as n:
+                with open(f'{training_type}_log.txt', mode='a') as n:
                     n.write(log_message)
 
                 losses = 0.0
@@ -130,9 +132,9 @@ if __name__ == '__main__':
         if global_step % sample_step == 0:
             if accelerator.is_main_process:
                 model_module = model.module if hasattr(model, 'module') else model
-                z = meanflow.sample_each_class(model_module, 1)
+                z = meanflow.sample_each_class(model_module, 10)
                 log_img = make_grid(z, nrow=10)
-                img_save_path = f"images/step_{global_step}.png"
+                img_save_path = f"{training_type}_images/step_{global_step}.png"
                 save_image(log_img, img_save_path)
             accelerator.wait_for_everyone()
             model.train()

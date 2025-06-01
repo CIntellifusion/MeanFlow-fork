@@ -39,9 +39,18 @@ def load_model_and_infer(
 
     # 3. 推理生成每类图像
     with torch.no_grad():
-        z = meanflow.sample_each_class(model, batch_size=1)  # 每类生成1个图像
+        z = meanflow.sample_each_class(model,10)  # 每类生成1个图像
         log_img = make_grid(z, nrow=10)  # 10类 → 1 行 10 张图
 
+    # 4. 保存图像
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    save_image(log_img, output_path)
+    print(f"[✓] Saved inference result to {output_path}")
+    # sample with cfg
+    with torch.no_grad():
+        z = meanflow.sample_each_class_with_cfg(model,10)  # 每类生成1个图像
+        log_img = make_grid(z, nrow=10)  # 10类 → 1 行 10 张图
+    output_path = output_path.replace('.png', '_cfg.png')
     # 4. 保存图像
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     save_image(log_img, output_path)
@@ -49,4 +58,7 @@ def load_model_and_infer(
 
 
 if __name__ == '__main__':
-    load_model_and_infer()
+    load_model_and_infer(
+        ckpt_path="checkpoints/fd_step_200000.0.pt",
+        output_path="./inference/fd_step_200000_inference_output.png",
+    )
